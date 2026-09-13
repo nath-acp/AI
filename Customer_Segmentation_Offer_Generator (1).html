@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customer Segmentation & Personalized Offer Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+  /* ---------- Tokens ---------- */
+  :root {
+    --color-bg: #EDF1F6;
+    --color-text: #101728;
+    --color-accent: #C4842A;
+    --color-accent-700: #8C5D1C;
+    --color-divider: #CBD3DE;
+    --color-neutral-800: #1C2436;
+
+    --font-heading: "Space Grotesk", "Helvetica Neue", sans-serif;
+    --font-heading-weight: 600;
+    --font-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+
+    --type-display: 116px;
+    --type-title: 60px;
+    --type-subtitle: 38px;
+    --type-body: 32px;
+    --type-small: 27px;
+    --type-kicker: 23px;
+    --pad-x: 120px;
+    --pad-top: 96px;
+    --pad-bottom: 120px;
+    --baseline: 46px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0B0E14;
+    font-family: var(--font-body);
+  }
+
+  /* ---------- Stage / scaling ---------- */
+  .deck-viewport {
+    width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  deck-stage {
+    display: block;
+    width: 1920px; height: 1080px;
+    position: relative;
+    transform-origin: center center;
+    background: var(--color-bg);
+    box-shadow: 0 40px 120px rgba(0,0,0,0.5);
+  }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column;
+    background: var(--color-bg); color: var(--color-text);
+    font-family: var(--font-body);
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+  }
+  .slide.is-active { display: flex; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .slide.is-active .rise { animation: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rise { animation: none !important; }
+  }
+
+  .text-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+  .kicker {
+    position: absolute; top: calc(1.5 * var(--baseline) - 1cap);
+    left: var(--pad-x); right: var(--pad-x);
+    font-size: var(--type-kicker); letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--color-accent);
+    font-feature-settings: "tnum" 1;
+  }
+  .kicker::after {
+    content: ""; position: absolute; left: 0; right: 0;
+    top: calc(2.5 * var(--baseline) - 1px - (1.5 * var(--baseline) - 1cap));
+    height: 2px; background: var(--color-divider);
+  }
+  .slide-title {
+    font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+    font-size: var(--type-title); line-height: calc(1.5 * var(--baseline)); letter-spacing: -0.01em; margin: 0;
+  }
+  .pin-bottom { position: absolute; left: var(--pad-x); right: var(--pad-x); bottom: var(--pad-bottom); }
+  .meta { display: flex; align-items: baseline; gap: 18px; font-size: var(--type-kicker); color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+  /* ---------- Cover ---------- */
+  .cover { justify-content: center; }
+  .cover .rise { display: flex; flex-direction: column; gap: 44px; }
+  .display {
+    font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+    font-size: var(--type-display); line-height: 1.08; letter-spacing: -0.015em; margin: 0;
+    max-width: 15ch;
+  }
+  .cover-sub { font-size: var(--type-subtitle); line-height: var(--baseline); max-width: 46ch; margin: 0; }
+
+  /* ---------- TOC ---------- */
+  .toc { display: flex; flex-direction: column; max-width: 1100px;
+    font-size: var(--type-subtitle); border-top: 2px solid var(--color-divider); }
+  .toc-row { display: flex; align-items: baseline; gap: 48px;
+    border-bottom: 2px solid var(--color-divider);
+    padding-block: calc(1.5 * var(--baseline) - 0.5cap - 1px); }
+  .toc-num { font-size: var(--type-kicker); color: var(--color-accent); font-feature-settings: "tnum" 1; }
+
+  /* ---------- Divider ---------- */
+  .divider { justify-content: center; background: var(--color-accent); color: var(--color-bg); }
+  .divider .rise { display: flex; flex-direction: column; align-items: flex-start; gap: 44px; }
+  .ghost-num {
+    font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+    font-size: 240px; line-height: 0.9; letter-spacing: -0.02em;
+    color: var(--color-accent-700);
+    margin: 0;
+  }
+  .divider .slide-title { color: var(--color-bg); }
+
+  /* ---------- Content layout ---------- */
+  .content { padding-top: calc(5 * var(--baseline)); }
+  .content > .slide-title { margin-top: -1cap; }
+  .content > .bullets { margin-top: calc(2.3 * var(--baseline) - 1cap); }
+  .content > .table { margin-top: calc(1.8 * var(--baseline)); }
+  .content > .toc { margin-top: calc(2 * var(--baseline)); }
+  .content > figure { margin-top: calc(0.6 * var(--baseline)); }
+  .content > .chart-caption { margin-top: calc(1.6 * var(--baseline) - 1cap); }
+  .content > .cols { margin-top: calc(2 * var(--baseline) - 1cap); }
+  .content > .quote-block { margin-top: calc(2 * var(--baseline) - 1cap); }
+  .content > .deliverables { margin-top: calc(1.8 * var(--baseline)); }
+
+  .bullets { display: flex; flex-direction: column; max-width: 1280px; margin: 0; padding: 0; list-style: none; font-size: var(--type-body); }
+  .bullets li { position: relative; line-height: var(--baseline); padding-left: 34px; }
+  .bullets li + li { margin-top: calc(1.3 * var(--baseline) - 1cap); }
+  .bullets li::before { content: ""; position: absolute; left: 0; top: calc(0.5cap + 9px); width: 9px; height: 9px; background: var(--color-accent); }
+
+  .cols { display: grid; column-gap: calc(2 * var(--baseline)); }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols > div { border-top: 2px solid var(--color-divider); padding-top: calc(var(--baseline) - 1cap); }
+  .cols h3 { font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+    font-size: var(--type-body); line-height: var(--baseline); margin: 0; }
+  .cols p { font-size: var(--type-small); line-height: calc(0.9 * var(--baseline)); margin: 0;
+    margin-top: calc(0.6 * var(--baseline) - 1cap); }
+  .cols .mini-list { list-style: none; margin: 0; padding: 0; margin-top: calc(0.6 * var(--baseline) - 1cap); }
+  .cols .mini-list li { position: relative; font-size: var(--type-small); line-height: calc(0.95 * var(--baseline));
+    padding-left: 28px; }
+  .cols .mini-list li + li { margin-top: 12px; }
+  .cols .mini-list li::before { content: ""; position: absolute; left: 0; top: calc(0.5cap + 8px); width: 8px; height: 8px; background: var(--color-accent); }
+
+  .quote-block { display: flex; flex-direction: column; gap: calc(1.4 * var(--baseline)); max-width: 1500px; }
+  .quote-block blockquote {
+    margin: 0; padding-left: 44px; border-left: 4px solid var(--color-accent);
+    font-family: var(--font-heading); font-weight: 500; font-size: var(--type-subtitle);
+    line-height: calc(1.15 * var(--baseline)); letter-spacing: -0.005em;
+  }
+  .quote-block .objective { max-width: 1200px; }
+  .quote-block .objective h4 {
+    font-family: var(--font-body); font-weight: 600; font-size: var(--type-kicker);
+    letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-accent); margin: 0 0 14px;
+  }
+  .quote-block .objective p { font-size: var(--type-body); line-height: var(--baseline); margin: 0; }
+
+  .lens-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: calc(2 * var(--baseline)); row-gap: calc(1.4 * var(--baseline)); }
+  .lens-grid > div { border-top: 2px solid var(--color-divider); padding-top: calc(var(--baseline) - 1cap); }
+  .lens-grid h3 { font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+    font-size: calc(var(--type-body) - 2px); line-height: calc(0.85 * var(--baseline)); margin: 0; }
+  .lens-grid p { font-size: var(--type-small); line-height: calc(0.9 * var(--baseline)); margin: 10px 0 0; }
+
+  .slide .table { max-width: 1680px; width: 100%; font-size: 28px; font-feature-settings: "tnum" 1; border-collapse: collapse; }
+  .slide .table th, .slide .table td { text-align: left; vertical-align: top; }
+  .slide .table th {
+    font-size: var(--type-kicker); font-weight: 600; color: var(--color-accent);
+    border-bottom: 2px solid var(--color-divider);
+    padding: calc(var(--baseline) - 0.5cap) 24px calc(var(--baseline) - 0.5cap - 1px);
+  }
+  .slide .table td {
+    border-bottom: 1px solid var(--color-divider);
+    padding: calc(var(--baseline) - 0.5cap - 0.5px) 24px calc(var(--baseline) - 0.5cap - 0.5px);
+  }
+  .slide .table th:first-child, .slide .table td:first-child { padding-left: 0; }
+  .slide .table th:last-child, .slide .table td:last-child { padding-right: 0; }
+
+  .deliverables { display: grid; grid-template-columns: 1fr 1fr; column-gap: calc(2.2 * var(--baseline)); max-width: 1680px; }
+  .deliverables ol { list-style: none; counter-reset: deliv; margin: 0; padding: 0; border-top: 2px solid var(--color-divider); }
+  .deliverables li {
+    counter-increment: deliv; position: relative;
+    display: flex; align-items: baseline; gap: 24px;
+    font-size: var(--type-small); line-height: calc(1.1 * var(--baseline));
+    border-bottom: 1px solid var(--color-divider);
+    padding-block: calc(0.72 * var(--baseline) - 0.5cap);
+  }
+  .deliverables li::before {
+    content: counter(deliv, decimal-leading-zero);
+    font-size: var(--type-kicker); color: var(--color-accent); font-feature-settings: "tnum" 1;
+    flex: none;
+  }
+
+  .note-box { display: grid; grid-template-columns: 1fr 1fr; column-gap: calc(2 * var(--baseline));
+    max-width: 1680px; margin-top: calc(1.6 * var(--baseline) - 1cap); }
+  .note-box > div { background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+    padding: 32px 36px; }
+  .note-box h4 { font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+    font-size: var(--type-small); margin: 0 0 10px; }
+  .note-box p { font-size: 25px; line-height: calc(0.85 * var(--baseline)); margin: 0; color: color-mix(in srgb, var(--color-text) 75%, transparent); }
+
+  /* ---------- Hero ---------- */
+  .hero { justify-content: center; gap: 44px; }
+  .hero-num {
+    font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+    font-size: 230px; line-height: 1; letter-spacing: -0.02em; margin: 0;
+    color: var(--color-accent);
+  }
+  .hero-caption { font-size: var(--type-small); line-height: var(--baseline); max-width: 56ch; margin: 0; }
+
+  /* ---------- Chart (workflow timeline) ---------- */
+  .chart { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text {
+    font-family: var(--font-body); font-size: 23px;
+    fill: color-mix(in srgb, var(--color-text) 55%, transparent);
+    font-feature-settings: "tnum" 1;
+  }
+  .chart .tl-line { stroke: var(--color-divider); stroke-width: 1; }
+  .chart .tl-node { fill: var(--color-neutral-800); }
+  .chart .tl-node-hi { fill: var(--color-accent); }
+  .chart .tl-step { fill: color-mix(in srgb, var(--color-text) 55%, transparent); letter-spacing: 0.08em; }
+  .chart .tl-label { fill: var(--color-text); font-size: 30px; font-family: var(--font-heading); font-weight: 600; }
+  .chart-caption { font-size: 24px; line-height: var(--baseline); max-width: 96ch; margin: 0; }
+  .chart-desc {
+    font-family: var(--font-body); font-size: 22px; line-height: 1.35;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+    margin: 0; width: 350px;
+  }
+
+  /* ---------- On-screen navigation chrome ---------- */
+  .nav-bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: center; gap: 18px;
+    padding: 22px 0;
+    opacity: 0; transition: opacity 0.25s ease;
+    z-index: 10;
+  }
+  .deck-viewport:hover .nav-bar, .nav-bar:focus-within { opacity: 1; }
+  .nav-btn {
+    width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(16,16,16,0.55); color: #EDF1F6; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-body); font-size: 18px; line-height: 1;
+    backdrop-filter: blur(6px);
+  }
+  .nav-btn:hover { background: rgba(16,16,16,0.8); }
+  .nav-btn:disabled { opacity: 0.3; cursor: default; }
+  .nav-count {
+    font-family: var(--font-body); font-size: 15px; color: rgba(237,241,246,0.9);
+    font-feature-settings: "tnum" 1; min-width: 64px; text-align: center;
+    background: rgba(16,16,16,0.55); border-radius: 999px; padding: 12px 18px;
+    backdrop-filter: blur(6px);
+  }
+
+  @media (max-width: 900px) {
+    .nav-bar { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+  <deck-stage id="stage">
+
+    <section class="slide cover is-active" data-label="Title" data-screen-label="01">
+      <div class="kicker"><span>AI-Built Software Project</span></div>
+      <div class="rise">
+        <h1 class="display">Customer Segmentation & Personalized Offer Generator</h1>
+        <p class="cover-sub text-muted">A GenAI-powered tool that helps regional managers segment customers and match them to the right offer — without needing advanced analytics.</p>
+      </div>
+      <div class="pin-bottom meta"><span>Problem Statement</span><span>·</span><span>Solution Overview</span></div>
+    </section>
+
+    <section class="slide content" data-label="Contents" data-screen-label="02">
+      <h2 class="slide-title">Contents</h2>
+      <div class="toc rise">
+        <div class="toc-row"><span class="toc-num">01</span><span>User Story & Objective</span></div>
+        <div class="toc-row"><span class="toc-num">02</span><span>Segmentation Logic</span></div>
+        <div class="toc-row"><span class="toc-num">03</span><span>Workflow</span></div>
+        <div class="toc-row"><span class="toc-num">04</span><span>Inputs & Outputs</span></div>
+        <div class="toc-row"><span class="toc-num">05</span><span>Key Features</span></div>
+        <div class="toc-row"><span class="toc-num">06</span><span>Deliverables</span></div>
+        <div class="toc-row"><span class="toc-num">07</span><span>Approach & Quality Standards</span></div>
+      </div>
+    </section>
+
+    <section class="slide divider" data-label="The Brief" data-screen-label="03">
+      <div class="rise">
+        <p class="ghost-num">01</p>
+        <h2 class="slide-title">The Brief</h2>
+      </div>
+    </section>
+
+    <section class="slide content" data-label="User Story and Objective" data-screen-label="04">
+      <div class="kicker"><span>01 · The Brief</span></div>
+      <h2 class="slide-title">User Story & Objective</h2>
+      <div class="quote-block rise">
+        <blockquote>"As a regional/market manager at a Communication Service Provider, I want a simple customer segmentation and personalized offer generator that classifies customers by profile, value, behaviour, usage, lifecycle and contract details — so I can see each customer's segment and the right personalized offer, without needing advanced analytics."</blockquote>
+        <div class="objective">
+          <h4>Objective</h4>
+          <p>Build a basic software module that lets the Regional/Market Manager team segment customers and view tailored personalized offers through simple, value-based analysis — then map each offer in the promotions list to the right segment.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide content" data-label="Segmentation Logic" data-screen-label="05">
+      <div class="kicker"><span>02 · Segmentation Logic</span></div>
+      <h2 class="slide-title">Four Lenses on Every Customer</h2>
+      <div class="lens-grid rise">
+        <div>
+          <h3>Usage-Based</h3>
+          <p>Data volume, call minutes, texts and app usage — segments that keep each customer on the right-sized plan.</p>
+        </div>
+        <div>
+          <h3>Customer Value</h3>
+          <p>Lifetime value to the CSP shapes the offer: premium support for high-value customers, budget-friendly options for cost-conscious ones.</p>
+        </div>
+        <div>
+          <h3>Bundling Behaviour</h3>
+          <p>Preference for all-in-one internet, TV and phone bundles versus a single service drives tailored bundle offers.</p>
+        </div>
+        <div>
+          <h3>Contract Length</h3>
+          <p>Month-to-month versus annual contracts inform retention strategy — renewal incentives or commitment offers.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide content" data-label="Workflow" data-screen-label="06">
+      <div class="kicker"><span>03 · Workflow</span></div>
+      <h2 class="slide-title">From Data to Delivery</h2>
+      <figure class="rise" style="margin:0;">
+        <svg class="chart" viewBox="0 0 1680 300" role="img" aria-label="Five step workflow from collecting customer data through segmentation, offer mapping, personalization and delivery">
+          <line class="tl-line" x1="0" y1="96" x2="1680" y2="96"/>
+          <text class="tl-step" x="0" y="62">STEP 1</text>
+          <text class="tl-step" x="360" y="62">STEP 2</text>
+          <text class="tl-step" x="720" y="62">STEP 3</text>
+          <text class="tl-step" x="1080" y="62">STEP 4</text>
+          <text class="tl-step" x="1440" y="62">STEP 5</text>
+          <rect class="tl-node" x="0" y="88" width="16" height="16"/>
+          <rect class="tl-node" x="360" y="88" width="16" height="16"/>
+          <rect class="tl-node" x="720" y="88" width="16" height="16"/>
+          <rect class="tl-node" x="1080" y="88" width="16" height="16"/>
+          <rect class="tl-node-hi" x="1440" y="88" width="16" height="16"/>
+          <text class="tl-label" x="0" y="158">Collect Data</text>
+          <text class="tl-label" x="360" y="158">Segment</text>
+          <text class="tl-label" x="720" y="158">Map Offers</text>
+          <text class="tl-label" x="1080" y="158">Personalize</text>
+          <text class="tl-label" x="1440" y="158">Deliver</text>
+          <foreignObject x="0" y="188" width="350" height="90">
+            <p class="chart-desc" xmlns="http://www.w3.org/1999/xhtml">Profile, behavioural and usage data</p>
+          </foreignObject>
+          <foreignObject x="360" y="188" width="350" height="90">
+            <p class="chart-desc" xmlns="http://www.w3.org/1999/xhtml">Apply usage, value, bundling and contract rules</p>
+          </foreignObject>
+          <foreignObject x="720" y="188" width="350" height="90">
+            <p class="chart-desc" xmlns="http://www.w3.org/1999/xhtml">Match each segment to eligible offers</p>
+          </foreignObject>
+          <foreignObject x="1080" y="188" width="350" height="90">
+            <p class="chart-desc" xmlns="http://www.w3.org/1999/xhtml">Craft the message using the customer's own details</p>
+          </foreignObject>
+          <foreignObject x="1440" y="188" width="350" height="90">
+            <p class="chart-desc" xmlns="http://www.w3.org/1999/xhtml">Send via email, SMS or app notification</p>
+          </foreignObject>
+        </svg>
+      </figure>
+      <p class="chart-caption text-muted">Each step uses only the customer's own profile, behaviour and contract data — no advanced analytics required to reach a tailored offer.</p>
+    </section>
+
+    <section class="slide content" data-label="Inputs and Outputs" data-screen-label="07">
+      <div class="kicker"><span>04 · Inputs & Outputs</span></div>
+      <h2 class="slide-title">Inputs & Outputs</h2>
+      <div class="cols cols-2 rise">
+        <div>
+          <h3>Data Requirements</h3>
+          <ul class="mini-list">
+            <li>Sample telecom offers and customer profiles, including past feedback and interactions</li>
+            <li>Customer profile data — demographics, preferences, location</li>
+            <li>Behavioural and usage data — service history, feedback, interaction logs</li>
+            <li>Available offers and promotions with eligibility criteria</li>
+            <li>Optional: historical data on offer effectiveness</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Expected Output</h3>
+          <ul class="mini-list">
+            <li>A personalized offer tailored to each customer's profile and behaviour</li>
+            <li>Improved engagement and higher offer conversion rates</li>
+            <li>Dashboards summarizing offer distribution, acceptance and effectiveness by segment</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide content" data-label="Key Features" data-screen-label="08">
+      <div class="kicker"><span>05 · Key Features</span></div>
+      <h2 class="slide-title">Key Features</h2>
+      <table class="table rise">
+        <thead>
+          <tr><th>Feature</th><th>What it does</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Login Screen</td><td>Role-based access — Administrator sets rules, Regional Manager views the dashboard and exports data</td></tr>
+          <tr><td>Rule Engine</td><td>Configure the criteria used to classify customers into segments</td></tr>
+          <tr><td>Automatic Classification</td><td>System assigns each customer's segment based on the defined rules</td></tr>
+          <tr><td>Dashboard</td><td>Segmented customers, profiles and values, with filters, summary totals and offer status</td></tr>
+          <tr><td>Export Option</td><td>Download segmentation data as CSV or PDF for offline use</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="slide content" data-label="Deliverables" data-screen-label="09">
+      <div class="kicker"><span>06 · Deliverables</span></div>
+      <h2 class="slide-title">Deliverables</h2>
+      <div class="deliverables rise">
+        <ol>
+          <li>Functional requirements document</li>
+          <li>Application & architecture documentation</li>
+          <li>Database design — logical model, physical model, ER diagram (RDBMS, no JSON)</li>
+          <li>UI/UX and wireframe design</li>
+        </ol>
+        <ol style="counter-reset: deliv 4;">
+          <li>Software code & working software</li>
+          <li>Functional test scripts (CSV or Excel)</li>
+          <li>Traceability matrix (CSV or Excel)</li>
+          <li>End-user manual — screens & help guide</li>
+          <li>AI "Code Quality Checker" agent, built with Streamlit or Gradio</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="slide content" data-label="Approach and Quality Standards" data-screen-label="10">
+      <div class="kicker"><span>07 · Approach & Quality Standards</span></div>
+      <h2 class="slide-title">Approach & Quality Standards</h2>
+      <ul class="bullets rise">
+        <li>Use AI tools or Build-Your-Own AI Agents (BYOAA) across the project — scalable, maintainable custom agents earn extra credit</li>
+        <li>Apply consistent design patterns, code reviews and automated testing throughout</li>
+        <li>Cover both functional and non-functional scenarios in testing, and keep every document current</li>
+        <li>Design the main interface around the regional manager's workflow first</li>
+      </ul>
+      <div class="note-box rise">
+        <div>
+          <h4>Main Application UI</h4>
+          <p>A proper, user-centred interface for the Regional Manager and Administrator — not built in Streamlit or Gradio.</p>
+        </div>
+        <div>
+          <h4>Code Quality Checker Agent</h4>
+          <p>The one exception: this AI agent is specifically built with Streamlit or Gradio, taking code and a checklist as input.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide hero" data-label="Scope at a Glance" data-screen-label="11">
+      <div class="kicker"><span>Scope at a Glance</span></div>
+      <p class="hero-num rise">9<span style="font-size: 0.32em; color: var(--color-text);"> deliverables</span></p>
+      <p class="hero-caption text-muted">From requirements and architecture through working software, test scripts, traceability, a user manual and a dedicated AI code-quality agent — every deliverable held to production quality.</p>
+    </section>
+
+    <section class="slide cover" data-label="Close" data-screen-label="12">
+      <div class="kicker"><span>Customer Segmentation & Personalized Offers</span></div>
+      <div class="rise">
+        <h2 class="display" style="max-width: 12ch;">Thank You</h2>
+        <p class="cover-sub text-muted">Built with AI tools and agents — ready for questions.</p>
+      </div>
+      <div class="pin-bottom meta"><span>Problem Statement Walkthrough</span><span>·</span><span>Questions</span></div>
+    </section>
+
+  </deck-stage>
+</div>
+
+<div class="nav-bar">
+  <button class="nav-btn" id="prevBtn" aria-label="Previous slide">&#8592;</button>
+  <div class="nav-count" id="navCount">1 / 12</div>
+  <button class="nav-btn" id="nextBtn" aria-label="Next slide">&#8594;</button>
+</div>
+
+<script>
+(function () {
+  var stage = document.getElementById('stage');
+  var slides = Array.prototype.slice.call(stage.querySelectorAll('.slide'));
+  var total = slides.length;
+  var current = 0;
+
+  var prevBtn = document.getElementById('prevBtn');
+  var nextBtn = document.getElementById('nextBtn');
+  var navCount = document.getElementById('navCount');
+  function scaleStage() {
+    var scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    stage.style.transform = 'scale(' + scale + ')';
+  }
+  window.addEventListener('resize', scaleStage);
+  scaleStage();
+
+  function goTo(index) {
+    if (index < 0 || index >= total || index === current) return;
+    slides[current].classList.remove('is-active');
+    current = index;
+    var slide = slides[current];
+    slide.classList.add('is-active');
+    var risers = slide.querySelectorAll('.rise');
+    risers.forEach(function (el) {
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animation = '';
+    });
+    navCount.textContent = (current + 1) + ' / ' + total;
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === total - 1;
+  }
+
+  prevBtn.addEventListener('click', function () { goTo(current - 1); });
+  nextBtn.addEventListener('click', function () { goTo(current + 1); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { goTo(current + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { goTo(current - 1); e.preventDefault(); }
+    if (e.key === 'Home') { goTo(0); }
+    if (e.key === 'End') { goTo(total - 1); }
+  });
+
+  navCount.textContent = '1 / ' + total;
+  prevBtn.disabled = true;
+})();
+</script>
+
+</body>
+</html>
